@@ -6,7 +6,7 @@ import {Luckone} from "../src/Luckone.sol";
 import {HelperConfig} from "./HelperConfig.s.sol";
 
 contract DeployLuckone is Script {
-    function run() external returns (Luckone) {
+    function run() external returns (Luckone, HelperConfig) {
         // 获取配置参数
         HelperConfig helperConfig = new HelperConfig();
         (
@@ -33,6 +33,6 @@ contract DeployLuckone is Script {
 
         vm.stopBroadcast();
 
-        return luckone;
+        return (luckone, helperConfig);
     }
 }

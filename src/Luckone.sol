@@ -176,4 +176,8 @@ contract Luckone is VRFConsumerBaseV2Plus, AutomationCompatibleInterface  {
     function getEntranceFee() external view returns (uint256) {
         return i_entranceFee;
     }
+
+    function getLuckoneState() external view returns (LuckoneState) {
+        return s_luckoneState;
+    }
 }
