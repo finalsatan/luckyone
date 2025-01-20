@@ -180,4 +180,8 @@ contract Luckone is VRFConsumerBaseV2Plus, AutomationCompatibleInterface  {
     function getLuckoneState() external view returns (LuckoneState) {
         return s_luckoneState;
     }
+
+    function getPlayer(uint256 index) external view returns (address) {
+        return s_players[index];
+    }
 }
