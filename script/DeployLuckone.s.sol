@@ -4,38 +4,50 @@ pragma solidity ^0.8.19;
 import {Script} from "forge-std/Script.sol";
 import {Luckone} from "../src/Luckone.sol";
 import {HelperConfig} from "./HelperConfig.s.sol";
+import {AddConsumer, CreateSubscription, FundSubscription} from "./Interactions.s.sol";
 
 contract DeployLuckone is Script {
     function run() external returns (Luckone, HelperConfig) {
         // 获取配置参数
         HelperConfig helperConfig = new HelperConfig();
-        
-        (
-            uint256 entranceFee,
-            uint256 interval,
-            bytes32 gasLane,
-            uint256 subscriptionId,
-            uint32 callbackGasLimit,
-            address vrfCoordinator,
-            address link,
-            address account
-        ) = helperConfig.activeNetworkConfig();
+        AddConsumer addConsumer = new AddConsumer();
+        HelperConfig.NetworkConfig memory config = helperConfig.getConfig();
 
-        // 开始广播交易
-        vm.startBroadcast();
+        if (config.subscriptionId == 0) {
+            CreateSubscription createSubscription = new CreateSubscription();
+            (
+                config.subscriptionId,
+                config.vrfCoordinatorV2_5
+            ) = createSubscription.run();
 
-        // 部署 Luckone 合约
+            FundSubscription fundSubscription = new FundSubscription();
+            fundSubscription.fundSubscription(
+                config.vrfCoordinatorV2_5,
+                config.subscriptionId,
+                config.link,
+                config.account
+            );
+
+            helperConfig.setConfig(block.chainid, config);
+        }
+
+        vm.startBroadcast(config.account);
         Luckone luckone = new Luckone(
-            entranceFee,
-            interval,
-            vrfCoordinator,
-            gasLane,
-            subscriptionId,
-            callbackGasLimit
+            config.entranceFee,
+            config.automationUpdateInterval,
+            config.vrfCoordinatorV2_5,
+            config.gasLane,
+            config.subscriptionId,
+            config.callbackGasLimit
         );
-
         vm.stopBroadcast();
 
+        addConsumer.addConsumer(
+            address(luckone),
+            config.vrfCoordinatorV2_5,
+            config.subscriptionId,
+            config.account
+        );
         return (luckone, helperConfig);
     }
 }

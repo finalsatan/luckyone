@@ -30,13 +30,13 @@ contract LuckoneTest is Test, CodeConstants {
         (luckone, helperConfig) = deployLuckone.run();
         vm.deal(PLAYER, STARTING_USER_BALANCE);
 
-        HelperConfig.NetworkConfig memory config = helperConfig.activeNetworkConfig();
+        HelperConfig.NetworkConfig memory config = helperConfig.getConfig();
         entranceFee = config.entranceFee;
-        interval = config.interval;
+        interval = config.automationUpdateInterval;
         gasLane = config.gasLane;
         subscriptionId = config.subscriptionId;
         callbackGasLimit = config.callbackGasLimit;
-        vrfCoordinator = config.vrfCoordinator;
+        vrfCoordinator = config.vrfCoordinatorV2_5;
         link = config.link;
         account = config.account;
 
