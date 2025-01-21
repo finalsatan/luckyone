@@ -9,6 +9,7 @@ contract DeployLuckone is Script {
     function run() external returns (Luckone, HelperConfig) {
         // 获取配置参数
         HelperConfig helperConfig = new HelperConfig();
+        
         (
             uint256 entranceFee,
             uint256 interval,
