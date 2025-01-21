@@ -6,38 +6,49 @@ import {Luckone} from "../../src/Luckone.sol";
 import {DeployLuckone} from "../../script/DeployLuckone.s.sol";
 import {HelperConfig} from "../../script/HelperConfig.s.sol";
 import {VRFCoordinatorV2_5Mock} from "@chainlink/contracts@1.2.0/src/v0.8/vrf/mocks/VRFCoordinatorV2_5Mock.sol";
+import {CodeConstants} from "../../script/HelperConfig.s.sol";
 
-contract LuckoneTest is Test {
+contract LuckoneTest is Test, CodeConstants {
     Luckone public luckone;
-    address public player;
     HelperConfig public helperConfig;
+
     uint256 public entranceFee;
     uint256 public interval;
     address public vrfCoordinator;
+    address public link;
+    address public account;
     bytes32 public gasLane;
-    uint64 public subscriptionId;
+    uint256 public subscriptionId;
     uint32 public callbackGasLimit;
-    uint256 public constant STARTING_BALANCE = 10 ether;
+
+    address public PLAYER = makeAddr("player");
+    uint256 public constant STARTING_USER_BALANCE = 10 ether;
+    uint256 public constant LINK_BALANCE = 100 ether;
 
     function setUp() public {
         DeployLuckone deployLuckone = new DeployLuckone();
         (luckone, helperConfig) = deployLuckone.run();
-        (
-            entranceFee,
-            interval,
-            vrfCoordinator,
-            gasLane,
-            subscriptionId,
-            callbackGasLimit
-        ) = helperConfig.activeNetworkConfig();
+        vm.deal(PLAYER, STARTING_USER_BALANCE);
+
+        HelperConfig.NetworkConfig memory config = helperConfig.activeNetworkConfig();
+        entranceFee = config.entranceFee;
+        interval = config.interval;
+        gasLane = config.gasLane;
+        subscriptionId = config.subscriptionId;
+        callbackGasLimit = config.callbackGasLimit;
+        vrfCoordinator = config.vrfCoordinator;
+        link = config.link;
+        account = config.account;
 
         // 添加这些行来设置 VRF 消费者
         vm.startBroadcast();
-        VRFCoordinatorV2_5Mock(vrfCoordinator).addConsumer(subscriptionId, address(luckone));
+        VRFCoordinatorV2_5Mock(vrfCoordinator).addConsumer(
+            subscriptionId,
+            address(luckone)
+        );
         vm.stopBroadcast();
-        
-        player = makeAddr("player");
-        vm.deal(player, STARTING_BALANCE);
+
+        vm.deal(PLAYER, STARTING_USER_BALANCE);
     }
 
     function testLuckoneInitializesInOpenState() public view {
@@ -46,7 +57,7 @@ contract LuckoneTest is Test {
 
     function testLuckoneRevertsIfNotEnoughEth() public {
         // Arrange
-        vm.prank(player);
+        vm.prank(PLAYER);
         // Act/Assert
         vm.expectRevert(Luckone.Luckone__NotEnoughEthSent.selector);
         luckone.enterLuckone{value: 0.0001 ether}();
@@ -54,33 +65,33 @@ contract LuckoneTest is Test {
 
     function testLuckoneRecordsPlayerEntrance() public {
         // Arrange
-        vm.prank(player);
+        vm.prank(PLAYER);
         // Act
         luckone.enterLuckone{value: entranceFee}();
         // Assert
         address playerEntered = luckone.getPlayer(0);
-        assert(playerEntered == player);
+        assert(playerEntered == PLAYER);
     }
 
     function testEmitsEventOnEntrance() public {
         // Arrange
-        vm.prank(player);
+        vm.prank(PLAYER);
         // Act/Assert
         vm.expectEmit(true, true, false, false, address(luckone));
-        emit Luckone.EnterLuckone(player);
+        emit Luckone.EnterLuckone(PLAYER);
         luckone.enterLuckone{value: entranceFee}();
     }
 
     function testDontAllowEnteringWhileCalculating() public {
         // Arrange
-        vm.prank(player);
+        vm.prank(PLAYER);
         luckone.enterLuckone{value: entranceFee}();
         vm.warp(block.timestamp + interval + 1);
         vm.roll(block.number + 1);
         luckone.performUpkeep("");
         // Act/Assert
         vm.expectRevert(Luckone.Luckone__NotOpen.selector);
-        vm.prank(player);
+        vm.prank(PLAYER);
         luckone.enterLuckone{value: entranceFee}();
     }
 }

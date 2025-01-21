@@ -12,10 +12,12 @@ contract DeployLuckone is Script {
         (
             uint256 entranceFee,
             uint256 interval,
-            address vrfCoordinator,
             bytes32 gasLane,
-            uint64 subscriptionId,
-            uint32 callbackGasLimit
+            uint256 subscriptionId,
+            uint32 callbackGasLimit,
+            address vrfCoordinator,
+            address link,
+            address account
         ) = helperConfig.activeNetworkConfig();
 
         // 开始广播交易

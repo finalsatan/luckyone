@@ -55,7 +55,7 @@ contract Luckone is VRFConsumerBaseV2Plus, AutomationCompatibleInterface  {
     // @dev duration of the lottery in seconds
     uint256 private immutable i_interval;
     bytes32 private immutable i_gasLane;
-    uint64 private immutable i_subscriptionId;
+    uint256 private immutable i_subscriptionId;
     uint32 private immutable i_callbackGasLimit;
     address payable[] private s_players;
     uint256 private s_lastTimeStamp;
@@ -70,7 +70,7 @@ contract Luckone is VRFConsumerBaseV2Plus, AutomationCompatibleInterface  {
         uint256 interval,
         address vrfCoordinator,
         bytes32 gasLane,
-        uint64 subscriptionId,
+        uint256 subscriptionId,
         uint32 callbackGasLimit
     ) VRFConsumerBaseV2Plus(vrfCoordinator) {
         i_entranceFee = entranceFee;
