@@ -2,6 +2,7 @@
 pragma solidity ^0.8.19;
 
 import {Test, console} from "forge-std/Test.sol";
+import {Vm} from "forge-std/Vm.sol";
 import {Luckone} from "../../src/Luckone.sol";
 import {DeployLuckone} from "../../script/DeployLuckone.s.sol";
 import {HelperConfig} from "../../script/HelperConfig.s.sol";
@@ -93,5 +94,109 @@ contract LuckoneTest is Test, CodeConstants {
         vm.expectRevert(Luckone.Luckone__NotOpen.selector);
         vm.prank(PLAYER);
         luckone.enterLuckone{value: entranceFee}();
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                              CHECKUPKEEP
+    //////////////////////////////////////////////////////////////*/
+    function testCheckUpkeepReturnsFalseIfItHasNoBalance() public {
+        // Arrange
+        vm.warp(block.timestamp + interval + 1);
+        vm.roll(block.number + 1);
+
+        // Act
+        (bool upkeepNeeded,) = luckone.checkUpkeep("");
+
+        // Assert
+        assert(!upkeepNeeded);
+    }
+
+    function testCheckUpkeepReturnsFalseIfRaffleIsntOpen() public {
+        // Arrange
+        vm.prank(PLAYER);
+        luckone.enterLuckone{value: entranceFee}();
+        vm.warp(block.timestamp + interval + 1);
+        vm.roll(block.number + 1);
+        luckone.performUpkeep("");
+        Luckone.LuckoneState luckoneState = luckone.getLuckoneState();
+        // Act
+        (bool upkeepNeeded,) = luckone.checkUpkeep("");
+        // Assert
+        assert(luckoneState == Luckone.LuckoneState.CALCULATING);
+        assert(upkeepNeeded == false);
+    }
+
+     // Challenge 1. testCheckUpkeepReturnsFalseIfEnoughTimeHasntPassed
+    function testCheckUpkeepReturnsFalseIfEnoughTimeHasntPassed() public {
+        // Arrange
+        vm.prank(PLAYER);
+        luckone.enterLuckone{value: entranceFee}();
+        vm.warp(block.timestamp + interval - 1);
+        vm.roll(block.number + 1);
+        // Act
+        (bool upkeepNeeded,) = luckone.checkUpkeep("");
+        // Assert
+        assert(!upkeepNeeded);
+    }
+
+    // Challenge 2. testCheckUpkeepReturnsTrueWhenParametersGood
+    function testCheckUpkeepReturnsTrueWhenParametersGood() public {
+        // Arrange
+        vm.prank(PLAYER);
+        luckone.enterLuckone{value: entranceFee}();
+        vm.warp(block.timestamp + interval + 1);
+        vm.roll(block.number + 1);
+        // Act
+        (bool upkeepNeeded,) = luckone.checkUpkeep("");
+        // Assert
+        assert(upkeepNeeded);
+    }
+
+     /*//////////////////////////////////////////////////////////////
+                             PERFORMUPKEEP
+    //////////////////////////////////////////////////////////////*/
+    function testPerformUpkeepCanOnlyRunIfCheckUpkeepIsTrue() public {
+        // Arrange
+        vm.prank(PLAYER);
+        luckone.enterLuckone{value: entranceFee}();
+        vm.warp(block.timestamp + interval + 1);
+        vm.roll(block.number + 1);
+
+        // Act / Assert
+        // It doesnt revert
+        luckone.performUpkeep("");
+    }
+
+    function testPerformUpkeepRevertsIfCheckUpkeepIsFalse() public {
+        // Arrange
+        uint256 currentBalance = 0;
+        uint256 numPlayers = 0;
+        Luckone.LuckoneState lState = luckone.getLuckoneState();
+        uint256 lastTimeStamp = luckone.getLastTimeStamp();
+        // Act / Assert
+        vm.expectRevert(
+            abi.encodeWithSelector(Luckone.Luckone__UpkeepNotNeeded.selector, currentBalance, numPlayers, lState, lastTimeStamp)
+        );
+        luckone.performUpkeep("");
+    }
+
+    function testPerformUpkeepUpdatesLuckoneStateAndEmitsRequestId() public {
+        // Arrange
+        vm.prank(PLAYER);
+        luckone.enterLuckone{value: entranceFee}();
+        vm.warp(block.timestamp + interval + 1);
+        vm.roll(block.number + 1);
+
+        // Act
+        vm.recordLogs();
+        luckone.performUpkeep(""); // emits requestId
+        Vm.Log[] memory entries = vm.getRecordedLogs();
+        bytes32 requestId = entries[0].topics[1];
+
+        // Assert
+        Luckone.LuckoneState luckoneState = luckone.getLuckoneState();
+        // requestId = raffle.getLastRequestId();
+        assert(uint256(requestId) > 0);
+        assert(uint256(luckoneState) == 1); // 0 = open, 1 = calculating
     }
 }

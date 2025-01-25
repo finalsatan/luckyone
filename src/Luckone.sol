@@ -64,7 +64,7 @@ contract Luckone is VRFConsumerBaseV2Plus, AutomationCompatibleInterface  {
     /** Events  */
     event EnterLuckone(address indexed player);
     event PickWinner(address indexed winner);
-
+    event RequestedLuckoneWinner(uint256 indexed requestId);
     constructor(
         uint256 entranceFee,
         uint256 interval,
@@ -146,6 +146,7 @@ contract Luckone is VRFConsumerBaseV2Plus, AutomationCompatibleInterface  {
                 )
             })
         );
+
     }
 
     
@@ -183,5 +184,9 @@ contract Luckone is VRFConsumerBaseV2Plus, AutomationCompatibleInterface  {
 
     function getPlayer(uint256 index) external view returns (address) {
         return s_players[index];
+    }
+
+    function getLastTimeStamp() external view returns (uint256) {
+        return s_lastTimeStamp;
     }
 }
