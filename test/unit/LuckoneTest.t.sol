@@ -1,26 +1,26 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.19;
 
-import {Test, console} from "forge-std/Test.sol";
+import {Test, console2} from "forge-std/Test.sol";
 import {Vm} from "forge-std/Vm.sol";
 import {Luckone} from "../../src/Luckone.sol";
 import {DeployLuckone} from "../../script/DeployLuckone.s.sol";
 import {HelperConfig} from "../../script/HelperConfig.s.sol";
 import {VRFCoordinatorV2_5Mock} from "@chainlink/contracts@1.2.0/src/v0.8/vrf/mocks/VRFCoordinatorV2_5Mock.sol";
 import {CodeConstants} from "../../script/HelperConfig.s.sol";
+import {LinkToken} from "../../test/mocks/LinkToken.sol";
 
 contract LuckoneTest is Test, CodeConstants {
     Luckone public luckone;
     HelperConfig public helperConfig;
 
-    uint256 public entranceFee;
-    uint256 public interval;
-    address public vrfCoordinator;
-    address public link;
-    address public account;
-    bytes32 public gasLane;
-    uint256 public subscriptionId;
-    uint32 public callbackGasLimit;
+    uint256 entranceFee;
+    uint256 interval;
+    address vrfCoordinator;
+    LinkToken link;
+    bytes32 gasLane;
+    uint256 subscriptionId;
+    uint32 callbackGasLimit;
 
     address public PLAYER = makeAddr("player");
     uint256 public constant STARTING_USER_BALANCE = 10 ether;
@@ -38,18 +38,19 @@ contract LuckoneTest is Test, CodeConstants {
         subscriptionId = config.subscriptionId;
         callbackGasLimit = config.callbackGasLimit;
         vrfCoordinator = config.vrfCoordinatorV2_5;
-        link = config.link;
-        account = config.account;
 
-        // 添加这些行来设置 VRF 消费者
-        vm.startBroadcast();
-        VRFCoordinatorV2_5Mock(vrfCoordinator).addConsumer(
-            subscriptionId,
-            address(luckone)
-        );
-        vm.stopBroadcast();
+        link = LinkToken(config.link);
 
-        vm.deal(PLAYER, STARTING_USER_BALANCE);
+        vm.startPrank(msg.sender);
+        if (block.chainid == LOCAL_CHAIN_ID) {
+            link.mint(msg.sender, LINK_BALANCE);
+            VRFCoordinatorV2_5Mock(vrfCoordinator).fundSubscription(
+                subscriptionId,
+                LINK_BALANCE
+            );
+        }
+        link.approve(vrfCoordinator, LINK_BALANCE);
+        vm.stopPrank();
     }
 
     function testLuckoneInitializesInOpenState() public view {
@@ -105,7 +106,7 @@ contract LuckoneTest is Test, CodeConstants {
         vm.roll(block.number + 1);
 
         // Act
-        (bool upkeepNeeded,) = luckone.checkUpkeep("");
+        (bool upkeepNeeded, ) = luckone.checkUpkeep("");
 
         // Assert
         assert(!upkeepNeeded);
@@ -120,13 +121,13 @@ contract LuckoneTest is Test, CodeConstants {
         luckone.performUpkeep("");
         Luckone.LuckoneState luckoneState = luckone.getLuckoneState();
         // Act
-        (bool upkeepNeeded,) = luckone.checkUpkeep("");
+        (bool upkeepNeeded, ) = luckone.checkUpkeep("");
         // Assert
         assert(luckoneState == Luckone.LuckoneState.CALCULATING);
         assert(upkeepNeeded == false);
     }
 
-     // Challenge 1. testCheckUpkeepReturnsFalseIfEnoughTimeHasntPassed
+    // Challenge 1. testCheckUpkeepReturnsFalseIfEnoughTimeHasntPassed
     function testCheckUpkeepReturnsFalseIfEnoughTimeHasntPassed() public {
         // Arrange
         vm.prank(PLAYER);
@@ -134,7 +135,7 @@ contract LuckoneTest is Test, CodeConstants {
         vm.warp(block.timestamp + interval - 1);
         vm.roll(block.number + 1);
         // Act
-        (bool upkeepNeeded,) = luckone.checkUpkeep("");
+        (bool upkeepNeeded, ) = luckone.checkUpkeep("");
         // Assert
         assert(!upkeepNeeded);
     }
@@ -147,12 +148,12 @@ contract LuckoneTest is Test, CodeConstants {
         vm.warp(block.timestamp + interval + 1);
         vm.roll(block.number + 1);
         // Act
-        (bool upkeepNeeded,) = luckone.checkUpkeep("");
+        (bool upkeepNeeded, ) = luckone.checkUpkeep("");
         // Assert
         assert(upkeepNeeded);
     }
 
-     /*//////////////////////////////////////////////////////////////
+    /*//////////////////////////////////////////////////////////////
                              PERFORMUPKEEP
     //////////////////////////////////////////////////////////////*/
     function testPerformUpkeepCanOnlyRunIfCheckUpkeepIsTrue() public {
@@ -175,7 +176,13 @@ contract LuckoneTest is Test, CodeConstants {
         uint256 lastTimeStamp = luckone.getLastTimeStamp();
         // Act / Assert
         vm.expectRevert(
-            abi.encodeWithSelector(Luckone.Luckone__UpkeepNotNeeded.selector, currentBalance, numPlayers, lState, lastTimeStamp)
+            abi.encodeWithSelector(
+                Luckone.Luckone__UpkeepNotNeeded.selector,
+                currentBalance,
+                numPlayers,
+                lState,
+                lastTimeStamp
+            )
         );
         luckone.performUpkeep("");
     }
@@ -191,12 +198,114 @@ contract LuckoneTest is Test, CodeConstants {
         vm.recordLogs();
         luckone.performUpkeep(""); // emits requestId
         Vm.Log[] memory entries = vm.getRecordedLogs();
-        bytes32 requestId = entries[0].topics[1];
+        bytes32 requestId = entries[1].topics[1];
 
         // Assert
         Luckone.LuckoneState luckoneState = luckone.getLuckoneState();
         // requestId = raffle.getLastRequestId();
         assert(uint256(requestId) > 0);
         assert(uint256(luckoneState) == 1); // 0 = open, 1 = calculating
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                           FULFILLRANDOMWORDS
+    //////////////////////////////////////////////////////////////*/
+    modifier luckoneEntered() {
+        vm.prank(PLAYER);
+        luckone.enterLuckone{value: entranceFee}();
+        vm.warp(block.timestamp + interval + 1);
+        vm.roll(block.number + 1);
+        _;
+    }
+
+    modifier skipFork() {
+        if (block.chainid != 31337) {
+            return;
+        }
+        _;
+    }
+
+    function testFulfillRandomWordsCanOnlyBeCalledAfterPerformUpkeep()
+        public
+        luckoneEntered
+        skipFork
+    {
+        // Arrange
+        // Act / Assert
+        vm.expectRevert(VRFCoordinatorV2_5Mock.InvalidRequest.selector);
+        // vm.mockCall could be used here...
+        VRFCoordinatorV2_5Mock(vrfCoordinator).fulfillRandomWords(
+            0,
+            address(luckone)
+        );
+
+        vm.expectRevert(VRFCoordinatorV2_5Mock.InvalidRequest.selector);
+        VRFCoordinatorV2_5Mock(vrfCoordinator).fulfillRandomWords(
+            1,
+            address(luckone)
+        );
+    }
+
+    // fuzz test
+    function testFuzzFulfillRandomWordsCanOnlyBeCalledAfterPerformUpkeep(
+        uint256 randomRequestId
+    ) public luckoneEntered skipFork {
+        // Arrange
+        // Act / Assert
+        vm.expectRevert(VRFCoordinatorV2_5Mock.InvalidRequest.selector);
+        // vm.mockCall could be used here...
+        VRFCoordinatorV2_5Mock(vrfCoordinator).fulfillRandomWords(
+            randomRequestId,
+            address(luckone)
+        );
+    }
+
+    function testFulfillRandomWordsPicksAWinnerResetsAndSendsMoney()
+        public
+        luckoneEntered
+        skipFork
+    {
+        address expectedWinner = address(1);
+
+        // Arrange
+        uint256 additionalEntrances = 3;
+        uint256 startingIndex = 1; // We have starting index be 1 so we can start with address(1) and not address(0)
+
+        for (
+            uint256 i = startingIndex;
+            i < startingIndex + additionalEntrances;
+            i++
+        ) {
+            address player = address(uint160(i));
+            hoax(player, 1 ether); // deal 1 eth to the player
+            luckone.enterLuckone{value: entranceFee}();
+        }
+
+        uint256 startingTimeStamp = luckone.getLastTimeStamp();
+        uint256 startingBalance = expectedWinner.balance;
+
+        // Act
+        vm.recordLogs();
+        luckone.performUpkeep(""); // emits requestId
+        Vm.Log[] memory entries = vm.getRecordedLogs();
+        console2.logBytes32(entries[1].topics[1]);
+        bytes32 requestId = entries[1].topics[1]; // get the requestId from the logs
+
+        VRFCoordinatorV2_5Mock(vrfCoordinator).fulfillRandomWords(
+            uint256(requestId),
+            address(luckone)
+        );
+
+        // Assert
+        address recentWinner = luckone.getRecentWinner();
+        Luckone.LuckoneState luckoneState = luckone.getLuckoneState();
+        uint256 winnerBalance = recentWinner.balance;
+        uint256 endingTimeStamp = luckone.getLastTimeStamp();
+        uint256 prize = entranceFee * (additionalEntrances + 1);
+
+        assert(recentWinner == expectedWinner);
+        assert(uint256(luckoneState) == 0);
+        assert(winnerBalance == startingBalance + prize);
+        assert(endingTimeStamp > startingTimeStamp);
     }
 }

@@ -134,7 +134,7 @@ contract Luckone is VRFConsumerBaseV2Plus, AutomationCompatibleInterface  {
         s_luckoneState = LuckoneState.CALCULATING;
         // 1. request the RNG
         // 2. get the random number
-        s_vrfCoordinator.requestRandomWords(
+        uint256 requestId = s_vrfCoordinator.requestRandomWords(
             VRFV2PlusClient.RandomWordsRequest({
                 keyHash: i_gasLane,
                 subId: i_subscriptionId,
@@ -142,11 +142,11 @@ contract Luckone is VRFConsumerBaseV2Plus, AutomationCompatibleInterface  {
                 callbackGasLimit: i_callbackGasLimit,
                 numWords: NUM_WORDS,
                 extraArgs: VRFV2PlusClient._argsToBytes(
-                    VRFV2PlusClient.ExtraArgsV1({nativePayment: true})
+                    VRFV2PlusClient.ExtraArgsV1({nativePayment: false})
                 )
             })
         );
-
+        emit RequestedLuckoneWinner(requestId);
     }
 
     
@@ -188,5 +188,9 @@ contract Luckone is VRFConsumerBaseV2Plus, AutomationCompatibleInterface  {
 
     function getLastTimeStamp() external view returns (uint256) {
         return s_lastTimeStamp;
+    }
+
+    function getRecentWinner() external view returns (address) {
+        return s_recentWinner;
     }
 }
